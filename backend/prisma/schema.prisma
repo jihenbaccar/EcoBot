@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPERVISEUR
+  AGENT
+}
+
+enum AspirateurStatus {
+  ACTIVE
+  INACTIVE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum MissionStatus {
+  PLANIFIEE
+  EN_COURS
+  TERMINEE
+  ANNULEE
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  firstName String
+  lastName  String
+  email     String   @unique
+  password  String
+  role      UserRole
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  missions  Mission[]
+  collectes Collecte[]
+  @@map("users")
+}
+
+model Aspirateur {
+  id               Int              @id @default(autoincrement())
+  reference        String           @unique
+  status           AspirateurStatus @default(INACTIVE)
+  currentWeight    Float            @default(0)
+  batteryLevel     Float            @default(100)
+  currentLatitude  Float?
+  currentLongitude Float?
+  lastSeen         DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  measurements     Measurement[]
+  missions         Mission[]
+  collectes        Collecte[]
+  @@map("aspirateurs")
+}
+
+model Mission {
+  id           Int           @id @default(autoincrement())
+  agentId      Int
+  aspirateurId Int
+  locationName String
+  address      String?
+  latitude     Float
+  longitude    Float
+  status       MissionStatus @default(PLANIFIEE)
+  startTime    DateTime?
+  endTime      DateTime?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  agent        User          @relation(fields: [agentId], references: [id])
+  aspirateur   Aspirateur    @relation(fields: [aspirateurId], references: [id])
+  collectes    Collecte[]
+  @@index([agentId])
+  @@index([aspirateurId])
+  @@index([status])
+  @@map("missions")
+}
+
+model Measurement {
+  id           BigInt      @id @default(autoincrement())
+  aspirateurId Int
+  weight       Float
+  battery      Float
+  latitude     Float?
+  longitude    Float?
+  timestamp    DateTime    @default(now())
+  aspirateur   Aspirateur  @relation(fields: [aspirateurId], references: [id])
+  @@index([aspirateurId, timestamp])
+  @@index([timestamp])
+  @@map("measurements")
+}
+
+model Collecte {
+  id           Int         @id @default(autoincrement())
+  aspirateurId Int
+  agentId      Int
+  missionId    Int?
+  weight       Float
+  latitude     Float?
+  longitude    Float?
+  collectedAt  DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  aspirateur   Aspirateur  @relation(fields: [aspirateurId], references: [id])
+  agent        User        @relation(fields: [agentId], references: [id])
+  mission      Mission?    @relation(fields: [missionId], references: [id])
+  @@index([aspirateurId])
+  @@index([agentId])
+  @@index([missionId])
+  @@map("collectes")
+}
