@@ -109,9 +109,20 @@ async function updateMission(req, res) {
   }
 }
 
+async function deleteMission(req, res) {
+  const missionId = Number.parseInt(req.params.id, 10);
+  try {
+    await prisma.mission.delete({ where: { id: missionId } });
+    res.status(204).end();
+  } catch (error) {
+    res.status(404).json({ error: "Mission introuvable" });
+  }
+}
+
 module.exports = {
   getMissions,
   getMissionById,
   createMission,
   updateMission,
+  deleteMission,
 };

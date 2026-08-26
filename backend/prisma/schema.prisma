@@ -26,18 +26,19 @@ enum MissionStatus {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   firstName String
   lastName  String
-  email     String   @unique
+  email     String     @unique
   password  String
   role      UserRole
   phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   missions  Mission[]
   collectes Collecte[]
+
   @@map("users")
 }
 
@@ -55,6 +56,7 @@ model Aspirateur {
   measurements     Measurement[]
   missions         Mission[]
   collectes        Collecte[]
+
   @@map("aspirateurs")
 }
 
@@ -75,6 +77,7 @@ model Mission {
   agent        User          @relation(fields: [agentId], references: [id])
   aspirateur   Aspirateur    @relation(fields: [aspirateurId], references: [id])
   collectes    Collecte[]
+
   @@index([agentId])
   @@index([aspirateurId])
   @@index([status])
@@ -82,33 +85,48 @@ model Mission {
 }
 
 model Measurement {
-  id           BigInt      @id @default(autoincrement())
-  aspirateurId Int
-  weight       Float
-  battery      Float
-  latitude     Float?
-  longitude    Float?
-  timestamp    DateTime    @default(now())
-  aspirateur   Aspirateur  @relation(fields: [aspirateurId], references: [id])
+  id                BigInt     @id @default(autoincrement())
+  deviceId          String     @default("ESP32_ROBOT_01")
+  aspirateurId      Int
+  weight            Float
+  weightKg          Float      @default(0)
+  battery           Float
+  batteryVoltage    Float      @default(0)
+  batteryPercentage Int        @default(0)
+  latitude          Float?
+  longitude         Float?
+  gpsFix            Boolean    @default(false)
+  satellites        Int        @default(0)
+  binStatus         String     @default("OK")
+  motorRunning      Boolean    @default(false)
+  motorSpeed        Int        @default(0)
+  wifiRssi          Int        @default(0)
+  uptime            Int        @default(0)
+  timestamp         DateTime   @default(now())
+  createdAt         DateTime   @default(now())
+  aspirateur        Aspirateur @relation(fields: [aspirateurId], references: [id])
+
+  @@index([deviceId, timestamp])
   @@index([aspirateurId, timestamp])
   @@index([timestamp])
   @@map("measurements")
 }
 
 model Collecte {
-  id           Int         @id @default(autoincrement())
+  id           Int        @id @default(autoincrement())
   aspirateurId Int
   agentId      Int
   missionId    Int?
   weight       Float
   latitude     Float?
   longitude    Float?
-  collectedAt  DateTime    @default(now())
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  aspirateur   Aspirateur  @relation(fields: [aspirateurId], references: [id])
-  agent        User        @relation(fields: [agentId], references: [id])
-  mission      Mission?    @relation(fields: [missionId], references: [id])
+  collectedAt  DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  aspirateur   Aspirateur @relation(fields: [aspirateurId], references: [id])
+  agent        User       @relation(fields: [agentId], references: [id])
+  mission      Mission?   @relation(fields: [missionId], references: [id])
+
   @@index([aspirateurId])
   @@index([agentId])
   @@index([missionId])

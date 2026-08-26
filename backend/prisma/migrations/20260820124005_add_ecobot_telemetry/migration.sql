@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "measurements" ADD COLUMN     "batteryPercentage" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "batteryVoltage" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN     "binStatus" TEXT NOT NULL DEFAULT 'OK',
+ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "deviceId" TEXT NOT NULL DEFAULT 'ESP32_ROBOT_01',
+ADD COLUMN     "gpsFix" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "motorRunning" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "motorSpeed" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "satellites" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "uptime" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "weightKg" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN     "wifiRssi" INTEGER NOT NULL DEFAULT 0;
+
+-- CreateIndex
+CREATE INDEX "measurements_deviceId_timestamp_idx" ON "measurements"("deviceId", "timestamp");

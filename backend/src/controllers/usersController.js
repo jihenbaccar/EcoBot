@@ -28,19 +28,62 @@ async function createUser(req, res) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const user = await prisma.user.create({
-    data: {
-      firstName,
-      lastName,
-      email,
-      password: hashedPassword,
-      role,
-      phone,
-    },
-  });
+  try {
+    const user = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        password: hashedPassword,
+        role,
+        phone,
+      },
+    });
 
-  const { password: _, ...userData } = user;
-  res.status(201).json(userData);
+    const { password: _, ...userData } = user;
+    res.status(201).json(userData);
+  } catch (error) {
+    if (error.code === "P2002")
+      return res.status(409).json({ error: "Cet email existe déjà" });
+    return res
+      .status(400)
+      .json({ error: "Rôle ou données utilisateur invalides" });
+  }
 }
 
-module.exports = { getUsers, createUser };
+async function updateUser(req, res) {
+  const id = Number.parseInt(req.params.id, 10);
+  const { firstName, lastName, email, role, phone, isActive, password } =
+    req.body;
+  if (!Number.isInteger(id))
+    return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const data = { firstName, lastName, email, role, phone, isActive };
+    if (password) data.password = await bcrypt.hash(password, 10);
+    const user = await prisma.user.update({ where: { id }, data });
+    const { password: _, ...userData } = user;
+    res.json(userData);
+  } catch (error) {
+    if (error.code === "P2002")
+      return res.status(409).json({ error: "Cet email existe déjà" });
+    res.status(404).json({ error: "Utilisateur introuvable" });
+  }
+}
+
+async function deleteUser(req, res) {
+  const id = Number.parseInt(req.params.id, 10);
+  if (id === req.user.userId)
+    return res
+      .status(400)
+      .json({ error: "Impossible de supprimer son propre compte" });
+  try {
+    await prisma.user.delete({ where: { id } });
+    res.status(204).end();
+  } catch (error) {
+    res
+      .status(409)
+      .json({ error: "Utilisateur utilisé par une mission ou une collecte" });
+  }
+}
+
+module.exports = { getUsers, createUser, updateUser, deleteUser };

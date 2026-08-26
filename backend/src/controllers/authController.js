@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const prisma = require("../prismaClient");
 
 async function login(req, res) {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email et mot de passe requis" });
@@ -15,6 +15,16 @@ async function login(req, res) {
 
   if (!user) {
     return res.status(401).json({ error: "Identifiants invalides" });
+  }
+
+  if (!user.isActive) {
+    return res.status(403).json({ error: "Compte désactivé" });
+  }
+
+  if (role && role !== user.role) {
+    return res
+      .status(403)
+      .json({ error: "Ce compte n'est pas autorisé pour ce rôle" });
   }
 
   const isValidPassword = await bcrypt.compare(password, user.password);

@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000/api";
 
 function getHeaders(token) {
   return {
@@ -7,17 +7,19 @@ function getHeaders(token) {
   };
 }
 
-export async function loginRequest(email, password) {
+export async function loginRequest(email, password, role) {
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, role }),
   });
 
   if (!response.ok) {
-    throw new Error("Erreur lors de la connexion");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Erreur lors de la connexion");
   }
 
+  if (response.status === 204) return null;
   return response.json();
 }
 
