@@ -24,8 +24,7 @@ EcoBot permet de :
 - Base de données : PostgreSQL
 - ORM : Prisma
 - Authentification : JWT + bcrypt
-- API client side : fetch (sans Axios)
-- Navigation : état React local (sans react-router-dom)
+- API client side : fetch 
 
 ## Prérequis
 
@@ -165,39 +164,3 @@ EcoBot/
 └── .gitignore
 ```
 
-## Déploiement
-
-À adapter selon votre hébergeur. Les étapes typiques sont :
-
-1. déployer le backend sur un serveur Node.js,
-2. déployer le frontend sur Vercel, Netlify ou un serveur statique,
-3. configurer PostgreSQL en production,
-4. mettre à jour `DATABASE_URL` et `VITE_API_URL`.
-
-## Sécurité
-
-- Ne committez jamais les fichiers `.env` contenant des secrets,
-- utilisez des mots de passe forts,
-- sécurisez les tokens JWT,
-- limitez les accès API selon les rôles utilisateur.
-
-## Licence
-
-Projet interne / éducatif. À adapter selon votre usage.
-
-## Contribution
-
-1. Créer une branche :
-   ```bash
-   git checkout -b feature/nom-de-la-fonctionnalite
-   ```
-2. Effectuer les modifications,
-3. Valider :
-   ```bash
-   git add .
-   git commit -m "Ajout de la fonctionnalité"
-   ```
-4. Pousser :
-   ```bash
-   git push origin feature/nom-de-la-fonctionnalite
-   ```
