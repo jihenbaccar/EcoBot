@@ -20,7 +20,9 @@ export async function loginRequest(email, password, role) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }
 
 export async function fetchResource(path, token, options = {}) {
@@ -34,5 +36,8 @@ export async function fetchResource(path, token, options = {}) {
     throw new Error(text || "Erreur API");
   }
 
-  return response.json();
+  if (response.status === 204) return null;
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }

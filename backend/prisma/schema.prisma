@@ -25,6 +25,12 @@ enum MissionStatus {
   ANNULEE
 }
 
+enum MissionApproval {
+  EN_ATTENTE
+  VALIDEE
+  INVALIDE
+}
+
 model User {
   id        Int        @id @default(autoincrement())
   firstName String
@@ -38,6 +44,7 @@ model User {
   updatedAt DateTime   @updatedAt
   missions  Mission[]
   collectes Collecte[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -66,22 +73,51 @@ model Mission {
   aspirateurId Int
   locationName String
   address      String?
-  latitude     Float
-  longitude    Float
+  latitude     Float?
+  longitude    Float?
   status       MissionStatus @default(PLANIFIEE)
   startTime    DateTime?
   endTime      DateTime?
   notes        String?
+  approval     MissionApproval @default(EN_ATTENTE)
+  reviewComment String?
+  reviewedAt   DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   agent        User          @relation(fields: [agentId], references: [id])
   aspirateur   Aspirateur    @relation(fields: [aspirateurId], references: [id])
   collectes    Collecte[]
+  photos       MissionPhoto[]
 
   @@index([agentId])
   @@index([aspirateurId])
   @@index([status])
   @@map("missions")
+}
+
+model MissionPhoto {
+  id          Int      @id @default(autoincrement())
+  missionId   Int
+  dataUrl     String   @db.Text
+  uploadedAt  DateTime @default(now())
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+  @@map("mission_photos")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  recipient User?    @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId Int?
+  type      String
+  message   String
+  missionId Int?
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  @@index([recipientId, createdAt])
+  @@map("notifications")
 }
 
 model Measurement {

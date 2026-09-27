@@ -84,6 +84,11 @@ function normalizeGps(value) {
 async function saveMeasurement(data) {
   const normalizedData = normalizeMeasurement(data);
   validateMeasurement(normalizedData);
+  const previousMeasurement = await prisma.measurement.findFirst({
+    where: { deviceId: normalizedData.deviceId },
+    orderBy: { timestamp: "desc" },
+    select: { weightKg: true },
+  });
   const latitude = normalizedData.gpsFix
     ? normalizeGps(normalizedData.latitude)
     : null;
@@ -137,6 +142,55 @@ async function saveMeasurement(data) {
       uptime: Math.trunc(normalizedData.uptime),
     },
   });
+
+  let activeMission = await prisma.mission.findFirst({
+    where: {
+      aspirateurId: aspirateur.id,
+      status: { in: ["PLANIFIEE", "EN_COURS"] },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, agentId: true, startTime: true, status: true },
+  });
+  const weightIncrease = previousMeasurement
+    ? normalizedData.weightKg - previousMeasurement.weightKg
+    : normalizedData.weightKg;
+  if (activeMission?.status === "PLANIFIEE" && weightIncrease > 0) {
+    activeMission = await prisma.mission.update({
+      where: { id: activeMission.id },
+      data: { status: "EN_COURS", startTime: new Date() },
+      select: { id: true, agentId: true, startTime: true, status: true },
+    });
+  }
+  const previousMissionMeasurement = activeMission
+    ? await prisma.measurement.findFirst({
+        where: {
+          aspirateurId: aspirateur.id,
+          id: { not: measurement.id },
+          ...(activeMission.startTime
+            ? { timestamp: { gte: activeMission.startTime } }
+            : {}),
+        },
+        orderBy: { timestamp: "desc" },
+        select: { weightKg: true },
+      })
+    : null;
+  const collectedWeight = previousMissionMeasurement
+    ? normalizedData.weightKg - previousMissionMeasurement.weightKg
+    : normalizedData.weightKg;
+
+  if (activeMission && collectedWeight > 0) {
+    await prisma.collecte.create({
+      data: {
+        aspirateurId: aspirateur.id,
+        agentId: activeMission.agentId,
+        missionId: activeMission.id,
+        weight: collectedWeight,
+        latitude,
+        longitude,
+        collectedAt: measurement.timestamp,
+      },
+    });
+  }
 
   broadcastMeasurement(measurement);
   return measurement;

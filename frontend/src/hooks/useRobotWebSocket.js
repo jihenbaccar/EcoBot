@@ -5,6 +5,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3000";
 export function useRobotWebSocket() {
   const [measurement, setMeasurement] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     let socket;
@@ -18,6 +19,7 @@ export function useRobotWebSocket() {
         try {
           const message = JSON.parse(event.data);
           if (message.type === "measurement") setMeasurement(message.data);
+          if (message.type === "notification") setNotification(message.data);
         } catch {
           // Ignore malformed messages from the server.
         }
@@ -37,5 +39,5 @@ export function useRobotWebSocket() {
     };
   }, []);
 
-  return { measurement, connected };
+  return { measurement, connected, notification };
 }

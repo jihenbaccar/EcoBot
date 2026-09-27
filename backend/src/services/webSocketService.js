@@ -30,8 +30,16 @@ function broadcastMeasurement(measurement) {
   }
 }
 
+function broadcastNotification(notification) {
+  const message = JSON.stringify({ type: "notification", data: notification });
+  for (const client of clients) {
+    if (client.readyState === 1) client.send(message);
+  }
+}
+
 module.exports = {
   registerWebSocket,
   broadcastMeasurement,
+  broadcastNotification,
   serializeMeasurement,
 };

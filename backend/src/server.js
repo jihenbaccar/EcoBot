@@ -18,13 +18,14 @@ const collectesRoutes = require("./routes/collectes");
 const statisticsRoutes = require("./routes/statistics");
 const iotRoutes = require("./routes/iot");
 const robotsRoutes = require("./routes/robots");
+const notificationsRoutes = require("./routes/notifications");
 
 const app = express();
 const server = http.createServer(app);
 const webSocketServer = new WebSocketServer({ server });
 
 app.use(cors({ origin: true }));
-app.use(express.json());
+app.use(express.json({ limit: "8mb" }));
 
 app.get("/", (req, res) => {
   res.json({ message: "EcoBot Platform API" });
@@ -39,6 +40,7 @@ app.use("/api/collectes", collectesRoutes);
 app.use("/api/statistics", statisticsRoutes);
 app.use("/api/iot", iotRoutes);
 app.use("/api/robots", robotsRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 registerWebSocket(webSocketServer);
 

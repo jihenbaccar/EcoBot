@@ -1,0 +1,2 @@
+ALTER TABLE "missions" ALTER COLUMN "latitude" DROP NOT NULL;
+ALTER TABLE "missions" ALTER COLUMN "longitude" DROP NOT NULL;

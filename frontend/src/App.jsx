@@ -1,14 +1,19 @@
 import { useMemo, useRef, useState } from "react";
 import { useEffect } from "react";
+import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   Activity,
   AlertTriangle,
   ArrowRight,
   Backpack,
   BatteryCharging,
+  Bell,
+  Camera,
   CheckCircle2,
   ClipboardList,
   Download,
+  Eye,
   FileText,
   Gauge,
   History,
@@ -16,6 +21,7 @@ import {
   Map,
   MapPinned,
   Pencil,
+  Play,
   Plus,
   ShieldCheck,
   Thermometer,
@@ -412,6 +418,241 @@ function EquipmentCard({ equipment }) {
     </div>
   );
 }
+function LocationClickHandler({ onChange }) {
+  useMapEvents({
+    click: ({ latlng }) => {
+      onChange("latitude", latlng.lat);
+      onChange("longitude", latlng.lng);
+    },
+  });
+  return null;
+}
+
+function OpenStreetMapPicker({ latitude, longitude, onChange }) {
+  const position =
+    latitude !== "" && longitude !== ""
+      ? [Number(latitude), Number(longitude)]
+      : null;
+
+  return (
+    <div className="location-picker">
+      <MapContainer
+        center={[36.8065, 10.1815]}
+        zoom={13}
+        className="google-map"
+      >
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <LocationClickHandler onChange={onChange} />
+        {position && <Marker position={position} />}
+      </MapContainer>
+      <div className="field-hint">
+        Cliquez sur la carte pour renseigner automatiquement les coordonnées.
+      </div>
+    </div>
+  );
+}
+
+function MissionDetailsModal({
+  mission,
+  token,
+  canUpload,
+  canReview,
+  onClose,
+  onSaved,
+}) {
+  const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const [zoomPhoto, setZoomPhoto] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setComment(mission?.reviewComment || "");
+    setPhotos(mission?.photos || []);
+    setZoomPhoto(null);
+    setError("");
+  }, [mission]);
+
+  if (!mission) return null;
+
+  const uploadPhotos = async (event) => {
+    const files = Array.from(event.target.files || []);
+    for (const file of files) {
+      if (!file.type.startsWith("image/") || file.size > 5_000_000) {
+        setError("Chaque photo doit être une image de moins de 5 Mo.");
+        continue;
+      }
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const photo = await fetchResource(
+        `/missions/${mission.id}/photos`,
+        token,
+        {
+          method: "POST",
+          body: JSON.stringify({ dataUrl }),
+        },
+      );
+      setPhotos((current) => [...current, photo]);
+    }
+    event.target.value = "";
+    onSaved();
+  };
+
+  const removePhoto = async (photoId) => {
+    try {
+      await fetchResource(`/missions/${mission.id}/photos/${photoId}`, token, {
+        method: "DELETE",
+      });
+      setPhotos((current) => current.filter((photo) => photo.id !== photoId));
+      onSaved();
+    } catch (removeError) {
+      setError(removeError.message);
+    }
+  };
+
+  const review = async (approval) => {
+    await fetchResource(`/missions/${mission.id}/review`, token, {
+      method: "POST",
+      body: JSON.stringify({ approval, reviewComment: comment.trim() }),
+    });
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay active" role="dialog" aria-modal="true">
+      <div className="modal-box mission-details-modal">
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">Détails de la mission</div>
+            <div className="field-hint">
+              {mission.locationName} ·{" "}
+              {mission.address || "Adresse non renseignée"}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Fermer"
+          >
+            <X size={15} />
+          </button>
+        </div>
+        <div className="mission-detail-grid">
+          <div>
+            <span>Agent</span>
+            <strong>
+              {mission.agent
+                ? `${mission.agent.firstName} ${mission.agent.lastName}`
+                : "Non affecté"}
+            </strong>
+          </div>
+          <div>
+            <span>Date</span>
+            <strong>
+              {mission.startTime
+                ? new Date(mission.startTime).toLocaleString("fr-FR")
+                : "Non planifiée"}
+            </strong>
+          </div>
+          <div>
+            <span>Statut</span>
+            <strong>{mission.status}</strong>
+          </div>
+          <div>
+            <span>Déchets cumulés</span>
+            <strong>
+              {mission.collectes.reduce(
+                (total, item) => total + Number(item.weight || 0),
+                0,
+              )}{" "}
+              kg
+            </strong>
+          </div>
+        </div>
+        <div className="card-head">
+          <div className="card-title">Photos du lieu</div>
+          {canUpload && (
+            <label className="btn-secondary photo-upload">
+              Ajouter plusieurs photos
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={uploadPhotos}
+              />
+            </label>
+          )}
+        </div>
+        <div className="detail-photo-grid">
+          {photos.map((photo) => (
+            <div className="detail-photo" key={photo.id}>
+              <img
+                src={photo.dataUrl}
+                alt="Preuve de mission"
+                onClick={() => setZoomPhoto(photo.dataUrl)}
+              />
+              {canUpload && (
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  onClick={() => removePhoto(photo.id)}
+                  aria-label="Supprimer la photo"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+          {!photos.length && (
+            <p className="empty-state">Aucune photo envoyée.</p>
+          )}
+        </div>
+        {canReview && (
+          <div className="review-box">
+            <label className="field">
+              Commentaire de validation
+              <textarea
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                placeholder="Commentaire pour l'agent"
+              />
+            </label>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => review("INVALIDE")}
+              >
+                Invalider et remettre en cours
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => review("VALIDEE")}
+              >
+                Valider la mission
+              </button>
+            </div>
+          </div>
+        )}
+        {error && <div className="error-message">{error}</div>}
+      </div>
+      {zoomPhoto && (
+        <div className="photo-lightbox" onClick={() => setZoomPhoto(null)}>
+          <img src={zoomPhoto} alt="Photo agrandie" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CrudPanel({
   title,
@@ -436,7 +677,12 @@ function CrudPanel({
     setEditingId(item.id);
     setForm(
       Object.fromEntries(
-        fields.map((field) => [field.name, item[field.name] ?? ""]),
+        fields.map((field) => [
+          field.name,
+          field.type === "datetime-local" && item[field.name]
+            ? new Date(item[field.name]).toISOString().slice(0, 16)
+            : (item[field.name] ?? ""),
+        ]),
       ),
     );
     setError("");
@@ -451,7 +697,11 @@ function CrudPanel({
         .filter((field) => form[field.name] !== "")
         .map((field) => [
           field.name,
-          field.type === "number" ? Number(form[field.name]) : form[field.name],
+          field.type === "number"
+            ? Number(form[field.name])
+            : field.type === "datetime-local" && form[field.name]
+              ? new Date(form[field.name]).toISOString()
+              : form[field.name],
         ]),
     );
     if (path === "/users" && !editingId) body.role = "AGENT";
@@ -526,36 +776,45 @@ function CrudPanel({
               </button>
             </div>
             <div className="crud-form">
-              {fields.map((field) => (
-                <label className="field" key={field.name}>
-                  {field.label}
-                  {field.options ? (
-                    <select
-                      value={form[field.name]}
-                      onChange={(event) =>
-                        update(field.name, event.target.value)
-                      }
-                      required={field.required && !editingId}
-                    >
-                      <option value="">Choisir</option>
-                      {field.options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={field.type || "text"}
-                      value={form[field.name]}
-                      onChange={(event) =>
-                        update(field.name, event.target.value)
-                      }
-                      required={field.required && !editingId}
-                    />
-                  )}
-                </label>
-              ))}
+              {fields.map((field) =>
+                field.type === "location-picker" ? (
+                  <OpenStreetMapPicker
+                    key={field.name}
+                    latitude={form.latitude}
+                    longitude={form.longitude}
+                    onChange={update}
+                  />
+                ) : (
+                  <label className="field" key={field.name}>
+                    {field.label}
+                    {field.options ? (
+                      <select
+                        value={form[field.name]}
+                        onChange={(event) =>
+                          update(field.name, event.target.value)
+                        }
+                        required={field.required && !editingId}
+                      >
+                        <option value="">Choisir</option>
+                        {field.options.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type || "text"}
+                        value={form[field.name]}
+                        onChange={(event) =>
+                          update(field.name, event.target.value)
+                        }
+                        required={field.required && !editingId}
+                      />
+                    )}
+                  </label>
+                ),
+              )}
             </div>
             <div className="modal-foot">
               <button
@@ -676,39 +935,66 @@ function SidebarNav({ items, activeKey, onSelect }) {
         >
           <Icon size={16} />
           <span>{label}</span>
-          {key === "missions" && <span className="nav-badge">2</span>}
         </button>
       ))}
     </nav>
   );
 }
 
-function AdminDashboard({ onLogout, token }) {
-  const [activeTab, setActiveTab] = useState("dashboard");
+function AdminDashboard({ onLogout, token, user }) {
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem("ecobot-admin-tab") || "dashboard",
+  );
   const [realMissions, setRealMissions] = useState([]);
   const [realAgents, setRealAgents] = useState([]);
   const [realEquipment, setRealEquipment] = useState([]);
+  const [realCollectes, setRealCollectes] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [liveNotifications, setLiveNotifications] = useState([]);
+  const [storedNotifications, setStoredNotifications] = useState([]);
+  const [detailsMission, setDetailsMission] = useState(null);
   const missionCrud = useRef({});
   const equipmentCrud = useRef({});
   const agentCrud = useRef({});
-  const { measurement: liveMeasurement, connected } = useRobotWebSocket();
+  const { notification: liveNotification } = useRobotWebSocket();
+
+  useEffect(() => {
+    if (!liveNotification) return;
+    setLiveNotifications((current) =>
+      [liveNotification, ...current].slice(0, 20),
+    );
+  }, [liveNotification]);
+
+  useEffect(() => {
+    localStorage.setItem("ecobot-admin-tab", activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([
-      fetchResource("/missions", token),
-      fetchResource("/users", token),
-      fetchResource("/aspirateurs", token),
-    ])
-      .then(([missionsData, usersData, equipmentDataFromApi]) => {
-        setRealMissions(missionsData);
-        setRealAgents(usersData.filter((item) => item.role === "AGENT"));
-        setRealEquipment(equipmentDataFromApi);
-      })
-      .catch(() => undefined);
+    fetchResource("/missions", token)
+      .then(setRealMissions)
+      .catch(() => setRealMissions([]));
+    fetchResource("/users", token)
+      .then((usersData) =>
+        setRealAgents(usersData.filter((item) => item.role === "AGENT")),
+      )
+      .catch(() => setRealAgents([]));
+    fetchResource("/aspirateurs", token)
+      .then(setRealEquipment)
+      .catch(() => setRealEquipment([]));
+    fetchResource("/collectes", token)
+      .then(setRealCollectes)
+      .catch(() => setRealCollectes([]));
+  }, [token]);
+  useEffect(() => {
+    if (!token) return;
+    fetchResource("/notifications", token)
+      .then(setStoredNotifications)
+      .catch(() => setStoredNotifications([]));
   }, [token]);
 
   const displayedMissions = realMissions.map((item) => ({
+    id: item.id,
     name: item.locationName,
     zone: item.address || "Zone non renseignée",
     agent: item.agent
@@ -719,13 +1005,23 @@ function AdminDashboard({ onLogout, token }) {
       : "Non planifiée",
     progress:
       item.status === "TERMINEE" ? 100 : item.status === "EN_COURS" ? 50 : 0,
+    status: item.status,
+    approval: item.approval,
+    reviewComment: item.reviewComment,
+    collectedWeight: item.collectes.reduce(
+      (total, collecte) => total + Number(collecte.weight || 0),
+      0,
+    ),
   }));
   const displayedAgents = realAgents.map((item) => ({
+    id: item.id,
     name: `${item.firstName} ${item.lastName}`,
     zone: item.phone || "Agent",
     routes: realMissions.filter((mission) => mission.agentId === item.id)
       .length,
-    collected: 0,
+    collected: realCollectes
+      .filter((collecte) => collecte.agentId === item.id)
+      .reduce((total, collecte) => total + Number(collecte.weight || 0), 0),
     score: item.isActive ? 100 : 0,
   }));
   const displayedEquipment = realEquipment.map((item) => ({
@@ -741,28 +1037,64 @@ function AdminDashboard({ onLogout, token }) {
           ? "maint"
           : "hs",
   }));
+  const missionStatusCounts = realMissions.reduce(
+    (counts, mission) => ({
+      ...counts,
+      [mission.status]: (counts[mission.status] || 0) + 1,
+    }),
+    {},
+  );
+  const periodWeight = (startDate) =>
+    realCollectes
+      .filter((collecte) => new Date(collecte.collectedAt) >= startDate)
+      .reduce((total, collecte) => total + Number(collecte.weight || 0), 0);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekStart = new Date(todayStart);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodStats = [
+    { label: "Aujourd’hui", value: periodWeight(todayStart) },
+    { label: "Cette semaine", value: periodWeight(weekStart) },
+    { label: "Ce mois", value: periodWeight(monthStart) },
+  ];
+  const weeklyRanking = realAgents
+    .map((agent) => ({
+      ...agent,
+      weight: realCollectes
+        .filter(
+          (collecte) =>
+            collecte.agentId === agent.id &&
+            new Date(collecte.collectedAt) >= weekStart,
+        )
+        .reduce((total, collecte) => total + Number(collecte.weight || 0), 0),
+    }))
+    .sort((first, second) => second.weight - first.weight);
+  const notifications = [
+    ...liveNotifications,
+    ...storedNotifications.map((item) => ({
+      id: `stored-${item.id}`,
+      text: item.message,
+      time: new Date(item.createdAt).toLocaleString("fr-FR"),
+    })),
+    ...realMissions
+      .filter((mission) => mission.status === "EN_COURS")
+      .map((mission) => ({
+        id: `mission-${mission.id}`,
+        text: `Mission en cours : ${mission.locationName}`,
+        time: "État actuel",
+      })),
+    ...realCollectes.slice(0, 5).map((collecte) => ({
+      id: `collecte-${collecte.id}`,
+      text: `Nouvelle collecte : ${collecte.weight} kg`,
+      time: new Date(collecte.collectedAt).toLocaleString("fr-FR"),
+    })),
+  ];
   const reload = (path, setter) => () =>
     fetchResource(path, token)
       .then(setter)
       .catch(() => undefined);
   const currentMeta = useMemo(() => adminPageMeta[activeTab], [activeTab]);
-  const robotCards = realEquipment.map((robot) => {
-    const latest =
-      liveMeasurement?.deviceId === robot.reference
-        ? liveMeasurement
-        : robot.measurements?.[0];
-    return {
-      ...robot,
-      measurement: latest,
-      battery: latest?.batteryPercentage ?? robot.batteryLevel,
-      weight: latest?.weightKg ?? robot.currentWeight,
-      binStatus: latest?.binStatus ?? "Aucune mesure",
-      motorRunning: latest?.motorRunning ?? false,
-      gps: latest?.gpsFix
-        ? `${latest.latitude}, ${latest.longitude}`
-        : "Sans fix GPS",
-    };
-  });
 
   const renderPageContent = () => {
     if (activeTab === "carte") {
@@ -863,16 +1195,19 @@ function AdminDashboard({ onLogout, token }) {
             { name: "locationName", label: "Lieu", required: true },
             { name: "address", label: "Adresse" },
             {
+              name: "startTime",
+              label: "Date et heure de la mission",
+              type: "datetime-local",
+            },
+            {
               name: "latitude",
               label: "Latitude",
               type: "number",
-              required: true,
             },
             {
               name: "longitude",
               label: "Longitude",
               type: "number",
-              required: true,
             },
             {
               name: "status",
@@ -894,13 +1229,15 @@ function AdminDashboard({ onLogout, token }) {
                 <th>Zone</th>
                 <th>Agent</th>
                 <th>Date</th>
+                <th>Déchets cumulés</th>
+                <th>Dernier commentaire</th>
                 <th>Progression</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {realMissions.map((mission) => (
-                <tr key={`${mission.name}-${mission.date}`}>
+                <tr key={mission.id}>
                   <td>{mission.locationName}</td>
                   <td>{mission.address || "Zone non renseignée"}</td>
                   <td>
@@ -913,6 +1250,14 @@ function AdminDashboard({ onLogout, token }) {
                       ? new Date(mission.startTime).toLocaleDateString("fr-FR")
                       : "Non planifiée"}
                   </td>
+                  <td className="mono">
+                    {mission.collectes.reduce(
+                      (total, collecte) => total + Number(collecte.weight || 0),
+                      0,
+                    )}{" "}
+                    kg
+                  </td>
+                  <td>{mission.reviewComment || "Aucun commentaire"}</td>
                   <td style={{ width: "150px" }}>
                     <div className="mission-bar-bg">
                       <div
@@ -942,6 +1287,15 @@ function AdminDashboard({ onLogout, token }) {
                         onClick={() => missionCrud.current.remove(mission.id)}
                       >
                         <Trash2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Voir les détails"
+                        aria-label="Voir les détails"
+                        onClick={() => setDetailsMission(mission)}
+                      >
+                        <Eye size={14} />
                       </button>
                     </div>
                   </td>
@@ -1058,7 +1412,7 @@ function AdminDashboard({ onLogout, token }) {
           </div>
           <div className="agent-grid">
             {realAgents.map((agent) => (
-              <div key={agent.name} className="agent-card">
+              <div key={agent.id} className="agent-card">
                 <div className="agent-head">
                   <div className="agent-avatar">
                     {`${agent.firstName} ${agent.lastName}`
@@ -1085,12 +1439,26 @@ function AdminDashboard({ onLogout, token }) {
                     <div className="agent-stat-label">Routes</div>
                   </div>
                   <div>
-                    <div className="agent-stat-val mono">0 kg</div>
+                    <div className="agent-stat-val mono">
+                      {displayedAgents.find((item) => item.id === agent.id)
+                        ?.collected || 0}{" "}
+                      kg
+                    </div>
                     <div className="agent-stat-label">Collecte</div>
                   </div>
                   <div>
                     <div className="agent-stat-val mono">
-                      {agent.isActive ? 100 : 0}%
+                      {agent.isActive
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (displayedAgents.find(
+                                (item) => item.id === agent.id,
+                              )?.collected || 0) / 10,
+                            ),
+                          )
+                        : 0}
+                      %
                     </div>
                     <div className="agent-stat-label">Score</div>
                   </div>
@@ -1154,107 +1522,52 @@ function AdminDashboard({ onLogout, token }) {
     return (
       <>
         <div className="kpi-strip">
-          <KpiCard
-            label="Robots enregistrés"
-            value={robotCards.length}
-            delta={connected ? "WebSocket actif" : "Hors ligne"}
-            tone={connected ? "up" : "flat"}
-          />
-          <KpiCard
-            label="Robots mesurés"
-            value={robotCards.filter((robot) => robot.measurement).length}
-            delta="Dernières données reçues"
-            tone="flat"
-          />
-          <KpiCard
-            label="Batterie moyenne"
-            value={
-              robotCards.length
-                ? `${Math.round(robotCards.reduce((total, robot) => total + robot.battery, 0) / robotCards.length)}%`
-                : "—"
-            }
-            delta="Parc enregistré"
-            tone="up"
-          />
-          <KpiCard
-            label="Moteurs actifs"
-            value={robotCards.filter((robot) => robot.motorRunning).length}
-            delta="Selon dernière mesure"
-            tone="up"
-          />
+          {[
+            ["Planifiées", missionStatusCounts.PLANIFIEE || 0],
+            ["En cours", missionStatusCounts.EN_COURS || 0],
+            ["Accomplies", missionStatusCounts.TERMINEE || 0],
+            ["À refaire / annulées", missionStatusCounts.ANNULEE || 0],
+          ].map(([label, value]) => (
+            <KpiCard
+              key={label}
+              label={`Missions ${label.toLowerCase()}`}
+              value={value}
+              delta="Période actuelle"
+              tone="flat"
+            />
+          ))}
         </div>
-
         <div className="panel-card">
           <div className="card-head">
-            <div className="card-title">État de chaque robot</div>
-            <div className="card-link">{robotCards.length} robot(s)</div>
+            <div className="card-title">Collecte par période</div>
+            <div className="card-link">Poids cumulé</div>
           </div>
-          <div className="eq-grid wide">
-            {robotCards.map((robot) => (
-              <div key={robot.id} className="eq-card robot-card">
-                <div className="eq-top">
-                  <div>
-                    <div className="eq-name">{robot.reference}</div>
-                    <div className="eq-agent">ID {robot.id}</div>
-                  </div>
-                  <span
-                    className={`eq-status ${robot.status === "ACTIVE" ? "status-actif" : "status-hs"}`}
-                  >
-                    {robot.status}
-                  </span>
-                </div>
-                <div className="robot-stat-grid">
-                  <span>Bac</span>
-                  <b>{robot.binStatus}</b>
-                  <span>Batterie</span>
-                  <b>{robot.battery}%</b>
-                  <span>Poids</span>
-                  <b>{robot.weight} kg</b>
-                  <span>Moteur</span>
-                  <b>{robot.motorRunning ? "ON" : "OFF"}</b>
-                  <span>Position</span>
-                  <b>{robot.gps}</b>
-                </div>
-              </div>
+          <div className="kpi-strip">
+            {periodStats.map((stat) => (
+              <KpiCard
+                key={stat.label}
+                label={stat.label}
+                value={`${stat.value} kg`}
+                delta="Collectes enregistrées"
+                tone="up"
+              />
             ))}
-            {!robotCards.length && (
-              <p className="empty-state">Aucun robot enregistré.</p>
-            )}
           </div>
         </div>
-
-        <div className="grid-layout">
-          <div className="panel-card">
-            <div className="card-head">
-              <div className="card-title">Collecte de la semaine</div>
-              <div className="card-link">kg</div>
-            </div>
-            <div className="chart-wrap">
-              <div
-                className="bars"
-                aria-label="Graphique de collecte hebdomadaire"
-              >
-                <p className="empty-state">Aucune collecte enregistrée.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div className="grid-layout lower-grid">
           <div className="panel-card">
             <div className="card-head">
-              <div className="card-title">Notifications</div>
-              <div className="card-link">Temps réel</div>
-            </div>
-            <div className="notif-list">
-              <p className="empty-state">Aucune notification.</p>
-            </div>
-          </div>
-
-          <div className="panel-card">
-            <div className="card-head">
               <div className="card-title">Missions actives</div>
-              <div className="card-link">6 tâches</div>
+              <div className="card-link">
+                {
+                  realMissions.filter(
+                    (mission) =>
+                      mission.status !== "TERMINEE" &&
+                      mission.status !== "ANNULEE",
+                  ).length
+                }{" "}
+                tâche(s)
+              </div>
             </div>
             <div className="mission-list">
               {displayedMissions.slice(0, 3).map((mission) => (
@@ -1278,6 +1591,26 @@ function AdminDashboard({ onLogout, token }) {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+          <div className="panel-card">
+            <div className="card-head">
+              <div className="card-title">Classement hebdomadaire</div>
+              <div className="card-link">Déchets aspirés</div>
+            </div>
+            <div className="ranking-list">
+              {weeklyRanking.map((agent, index) => (
+                <div className="ranking-row" key={agent.id}>
+                  <span className="ranking-position">{index + 1}</span>
+                  <span className="ranking-name">
+                    {agent.firstName} {agent.lastName}
+                  </span>
+                  <strong className="mono">{agent.weight} kg</strong>
+                </div>
+              ))}
+              {!weeklyRanking.length && (
+                <p className="empty-state">Aucun agent enregistré.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1348,13 +1681,20 @@ function AdminDashboard({ onLogout, token }) {
 
   return (
     <div className="dashboard-shell">
+      <MissionDetailsModal
+        mission={detailsMission}
+        token={token}
+        canReview
+        onClose={() => setDetailsMission(null)}
+        onSaved={() => reload("/missions", setRealMissions)()}
+      />
       <aside className="sidebar">
         <div className="brand-row">
           <div className="brand-mark">
             <Backpack size={18} strokeWidth={1.8} />
           </div>
           <div>
-            <div className="brand-name">AspiroNet</div>
+            <div className="brand-name">EcoBot</div>
             <div className="brand-sub">Console admin</div>
           </div>
         </div>
@@ -1367,9 +1707,17 @@ function AdminDashboard({ onLogout, token }) {
         />
 
         <div className="sidebar-foot">
-          <div className="avatar">KT</div>
+          <div className="avatar">
+            {`${user?.firstName || ""} ${user?.lastName || ""}`
+              .split(" ")
+              .filter(Boolean)
+              .map((part) => part[0].toUpperCase())
+              .join("")}
+          </div>
           <div>
-            <div className="foot-name">Karim T.</div>
+            <div className="foot-name">
+              {user?.firstName} {user?.lastName}
+            </div>
             <div className="foot-role">Superviseur</div>
           </div>
         </div>
@@ -1382,6 +1730,37 @@ function AdminDashboard({ onLogout, token }) {
             <div className="sub-title">{currentMeta.sub}</div>
           </div>
           <div className="topbar-actions">
+            <div className="notification-menu">
+              <button
+                type="button"
+                className="notification-button"
+                aria-label="Notifications"
+                aria-expanded={notificationsOpen}
+                onClick={() => setNotificationsOpen((open) => !open)}
+              >
+                <Bell size={17} />
+                {notifications.length > 0 && (
+                  <span className="notification-count">
+                    {notifications.length}
+                  </span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <div className="notification-dropdown">
+                  <div className="notification-title">Notifications</div>
+                  {notifications.length ? (
+                    notifications.map((notification) => (
+                      <div className="notification-entry" key={notification.id}>
+                        <div>{notification.text}</div>
+                        <small>{notification.time}</small>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">Aucune notification.</div>
+                  )}
+                </div>
+              )}
+            </div>
             <button type="button" className="logout-btn" onClick={onLogout}>
               Se déconnecter
             </button>
@@ -1401,8 +1780,24 @@ function AdminDashboard({ onLogout, token }) {
 }
 
 function AgentDashboard({ onLogout, token, user }) {
-  const [activeTab, setActiveTab] = useState("apercu");
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem("ecobot-agent-tab") || "apercu",
+  );
   const [realAgentMissions, setRealAgentMissions] = useState([]);
+  const [realEquipment, setRealEquipment] = useState([]);
+  const [realCollectes, setRealCollectes] = useState([]);
+  const [detailsMission, setDetailsMission] = useState(null);
+  const { measurement: liveMeasurement } = useRobotWebSocket();
+  const refreshAgentMissions = () =>
+    fetchResource("/missions", token)
+      .then((items) =>
+        setRealAgentMissions(items.filter((item) => item.agentId === user.id)),
+      )
+      .catch(() => undefined);
+  const [missionActionError, setMissionActionError] = useState("");
+  useEffect(() => {
+    localStorage.setItem("ecobot-agent-tab", activeTab);
+  }, [activeTab]);
   useEffect(() => {
     if (!token || !user) return;
     fetchResource("/missions", token)
@@ -1410,8 +1805,48 @@ function AgentDashboard({ onLogout, token, user }) {
         setRealAgentMissions(items.filter((item) => item.agentId === user.id));
       })
       .catch(() => undefined);
+    fetchResource("/aspirateurs", token)
+      .then(setRealEquipment)
+      .catch(() => setRealEquipment([]));
+    fetchResource("/collectes", token)
+      .then((items) =>
+        setRealCollectes(items.filter((item) => item.agentId === user.id)),
+      )
+      .catch(() => setRealCollectes([]));
   }, [token, user]);
+  useEffect(() => {
+    if (!token || !user || !liveMeasurement) return;
+    fetchResource("/collectes", token)
+      .then((items) =>
+        setRealCollectes(items.filter((item) => item.agentId === user.id)),
+      )
+      .catch(() => undefined);
+  }, [liveMeasurement, token, user]);
+  const finishMission = async (missionId) => {
+    setMissionActionError("");
+    try {
+      await fetchResource(`/missions/${missionId}/complete`, token, {
+        method: "POST",
+      });
+      refreshAgentMissions();
+    } catch (error) {
+      setMissionActionError(error.message);
+    }
+  };
+  const changeMissionStatus = async (missionId, status) => {
+    setMissionActionError("");
+    try {
+      await fetchResource(`/missions/${missionId}/status`, token, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+      refreshAgentMissions();
+    } catch (error) {
+      setMissionActionError(error.message);
+    }
+  };
   const agentMissionRows = realAgentMissions.map((item) => ({
+    id: item.id,
     name: item.locationName,
     zone: item.address || "Zone non renseignée",
     date: item.startTime
@@ -1419,12 +1854,54 @@ function AgentDashboard({ onLogout, token, user }) {
       : "Non planifiée",
     progress:
       item.status === "TERMINEE" ? 100 : item.status === "EN_COURS" ? 50 : 0,
+    status: item.status,
+    approval: item.approval,
+    reviewComment: item.reviewComment,
+    collectedWeight: item.collectes.reduce(
+      (total, collecte) => total + Number(collecte.weight || 0),
+      0,
+    ),
   }));
+
+  const assignedEquipment = realAgentMissions
+    .map((mission) =>
+      realEquipment.find((item) => item.id === mission.aspirateurId),
+    )
+    .find(Boolean);
+  const today = new Date();
+  const todayCollectes = realCollectes.filter((item) => {
+    const date = new Date(item.collectedAt);
+    return date.toDateString() === today.toDateString();
+  });
+  const todayWeight = todayCollectes.reduce(
+    (total, item) => total + Number(item.weight || 0),
+    0,
+  );
+  const activeMissions = realAgentMissions.filter(
+    (mission) => mission.status !== "TERMINEE" && mission.status !== "ANNULEE",
+  ).length;
+  const currentZone = realAgentMissions.find(
+    (mission) => mission.status === "EN_COURS",
+  )?.address;
+  const currentMission = realAgentMissions.find(
+    (mission) => mission.status === "EN_COURS",
+  );
+  const currentBinWeight =
+    liveMeasurement &&
+    assignedEquipment &&
+    liveMeasurement.deviceId === assignedEquipment.reference
+      ? liveMeasurement.weightKg
+      : assignedEquipment?.currentWeight;
+  const currentMissionWeight = realCollectes
+    .filter((collecte) => collecte.missionId === currentMission?.id)
+    .reduce((total, collecte) => total + Number(collecte.weight || 0), 0);
 
   const currentPage = {
     apercu: {
       title: "Vue d’ensemble",
-      subtitle: "Sac connecté #01 · Secteur A — Centre-ville",
+      subtitle: assignedEquipment
+        ? `${assignedEquipment.reference} · ${user.firstName} ${user.lastName}`
+        : `${user.firstName} ${user.lastName} · Aucun équipement affecté`,
     },
     missions: {
       title: "Mes missions",
@@ -1473,7 +1950,9 @@ function AgentDashboard({ onLogout, token, user }) {
         <div className="panel-card">
           <div className="card-head">
             <div className="card-title">Toutes mes missions</div>
-            <div className="card-link">Cette semaine</div>
+            <div className="card-link">
+              {agentMissionRows.length} mission(s)
+            </div>
           </div>
           <table className="list">
             <thead>
@@ -1481,18 +1960,22 @@ function AgentDashboard({ onLogout, token, user }) {
                 <th>Mission</th>
                 <th>Zone</th>
                 <th>Date</th>
+                <th>Cumul aspiré</th>
                 <th>Progression</th>
                 <th>Statut</th>
+                <th>Dernier commentaire</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {agentMissionRows.map((mission) => {
                 const badge = getMissionBadge(mission.progress);
                 return (
-                  <tr key={mission.name}>
+                  <tr key={mission.id}>
                     <td>{mission.name}</td>
                     <td>{mission.zone}</td>
                     <td className="mono">{mission.date}</td>
+                    <td className="mono">{mission.collectedWeight} kg</td>
                     <td style={{ width: "150px" }}>
                       <div className="mission-bar-bg">
                         <div
@@ -1505,12 +1988,98 @@ function AgentDashboard({ onLogout, token, user }) {
                       <span className={`mission-tag ${badge.className}`}>
                         {badge.label}
                       </span>
+                      {mission.approval === "VALIDEE" && (
+                        <div className="review-approved">Bien</div>
+                      )}
+                    </td>
+                    <td>{mission.reviewComment || "Aucun commentaire"}</td>
+                    <td>
+                      <div className="action-icons">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Ajouter ou gérer les photos"
+                          aria-label="Ajouter ou gérer les photos"
+                          onClick={() =>
+                            setDetailsMission(
+                              realAgentMissions.find(
+                                (item) => item.id === mission.id,
+                              ),
+                            )
+                          }
+                        >
+                          <Camera size={14} />
+                        </button>
+                        {mission.status === "PLANIFIEE" && (
+                          <button
+                            type="button"
+                            className="icon-btn action-start"
+                            title="Démarrer la mission"
+                            aria-label="Démarrer la mission"
+                            onClick={() =>
+                              changeMissionStatus(mission.id, "EN_COURS")
+                            }
+                          >
+                            <Play size={14} />
+                          </button>
+                        )}
+                        {mission.status === "EN_COURS" && (
+                          <button
+                            type="button"
+                            className="icon-btn action-complete"
+                            title="Terminer la mission"
+                            aria-label="Terminer la mission"
+                            onClick={() => finishMission(mission.id)}
+                          >
+                            <CheckCircle2 size={14} />
+                          </button>
+                        )}
+                        {(mission.status === "TERMINEE" ||
+                          mission.status === "ANNULEE") && (
+                          <button
+                            type="button"
+                            className="icon-btn action-start"
+                            title="Reprendre la mission"
+                            aria-label="Reprendre la mission"
+                            onClick={() =>
+                              changeMissionStatus(mission.id, "EN_COURS")
+                            }
+                          >
+                            <Play size={14} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Voir les détails"
+                          aria-label="Voir les détails"
+                          onClick={() =>
+                            setDetailsMission(
+                              realAgentMissions.find(
+                                (item) => item.id === mission.id,
+                              ),
+                            )
+                          }
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
+              {!agentMissionRows.length && (
+                <tr>
+                  <td colSpan="8" className="empty-state">
+                    Aucune mission attribuée.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+          {missionActionError && (
+            <div className="error-message">{missionActionError}</div>
+          )}
         </div>
       );
     }
@@ -1532,14 +2101,33 @@ function AgentDashboard({ onLogout, token, user }) {
               </tr>
             </thead>
             <tbody>
-              {historyRows.map((row) => (
-                <tr key={row.date}>
-                  <td className="mono">{row.date}</td>
-                  <td>{row.zone}</td>
-                  <td className="mono">{row.kg} kg</td>
-                  <td className="mono">{row.time}</td>
+              {realCollectes.map((collecte) => (
+                <tr key={collecte.id}>
+                  <td className="mono">
+                    {new Date(collecte.collectedAt).toLocaleDateString("fr-FR")}
+                  </td>
+                  <td>
+                    {collecte.mission?.locationName || "Zone non renseignée"}
+                  </td>
+                  <td className="mono">{collecte.weight} kg</td>
+                  <td className="mono">
+                    {new Date(collecte.collectedAt).toLocaleTimeString(
+                      "fr-FR",
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )}
+                  </td>
                 </tr>
               ))}
+              {!realCollectes.length && (
+                <tr>
+                  <td colSpan="4" className="empty-state">
+                    Aucune collecte enregistrée.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -1575,35 +2163,51 @@ function AgentDashboard({ onLogout, token, user }) {
                   strokeLinecap="round"
                   strokeDasharray={2 * Math.PI * 46}
                   strokeDashoffset={
-                    2 * Math.PI * 46 - (82 / 100) * (2 * Math.PI * 46)
+                    2 * Math.PI * 46 -
+                    ((assignedEquipment?.batteryLevel || 0) / 100) *
+                      (2 * Math.PI * 46)
                   }
                 />
               </svg>
               <div className="big-ring-val">
-                <div className="big-ring-num mono">82%</div>
+                <div className="big-ring-num mono">
+                  {assignedEquipment
+                    ? `${assignedEquipment.batteryLevel}%`
+                    : "—"}
+                </div>
                 <div className="big-ring-label">Batterie</div>
               </div>
             </div>
 
             <div className="device-info">
-              <div className="device-name">Sac connecté #01</div>
+              <div className="device-name">
+                {assignedEquipment?.reference || "Aucun équipement affecté"}
+              </div>
               <div className="device-status">
-                <Activity size={12} /> Actif
+                <Activity size={12} />{" "}
+                {assignedEquipment?.status || "Non disponible"}
               </div>
               <div className="metric-list">
                 <MetricRow
-                  label="Poids collecté"
-                  value="18.4 kg"
+                  label="Bac actuel (temps réel)"
+                  value={
+                    currentBinWeight == null ? "—" : `${currentBinWeight} kg`
+                  }
+                  icon={Gauge}
+                />
+                <MetricRow
+                  label="Cumul mission"
+                  value={`${currentMissionWeight} kg`}
                   icon={Gauge}
                 />
                 <MetricRow
                   label="Température moteur"
-                  value="38°C"
+                  value="—"
                   icon={Thermometer}
                 />
                 <MetricRow
                   label="Zone de travail"
-                  value="A2"
+                  value={currentZone || "—"}
                   icon={MapPinned}
                 />
               </div>
@@ -1616,7 +2220,18 @@ function AgentDashboard({ onLogout, token, user }) {
               <div className="card-link">Live</div>
             </div>
             <div className="notif-list">
-              {notifData.map((item) => {
+              {(assignedEquipment?.batteryLevel < 25
+                ? [
+                    {
+                      text: "Batterie faible",
+                      time: "État actuel",
+                      icon: "battery",
+                      bg: "var(--amber-bg)",
+                      color: "var(--amber)",
+                    },
+                  ]
+                : []
+              ).map((item) => {
                 const iconMap = {
                   battery: <BatteryCharging size={15} />,
                   temp: <Thermometer size={15} />,
@@ -1638,6 +2253,9 @@ function AgentDashboard({ onLogout, token, user }) {
                   </div>
                 );
               })}
+              {!assignedEquipment && (
+                <p className="empty-state">Aucune alerte disponible.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1645,15 +2263,19 @@ function AgentDashboard({ onLogout, token, user }) {
         <div className="stat-strip">
           <div className="stat-card">
             <div className="stat-label">Déchets collectés aujourd’hui</div>
-            <div className="stat-val mono">18.4 kg</div>
+            <div className="stat-val mono">
+              {todayWeight ? `${todayWeight} kg` : "—"}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Missions du jour</div>
-            <div className="stat-val mono">2 / 3</div>
+            <div className="stat-val mono">
+              {activeMissions} / {realAgentMissions.length}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Temps de fonctionnement</div>
-            <div className="stat-val mono">4h 12</div>
+            <div className="stat-val mono">—</div>
           </div>
         </div>
 
@@ -1666,7 +2288,7 @@ function AgentDashboard({ onLogout, token, user }) {
             {agentMissionRows.slice(0, 3).map((mission) => {
               const badge = getMissionBadge(mission.progress);
               return (
-                <div key={mission.name} className="mission-item">
+                <div key={mission.id} className="mission-item">
                   <div className="mission-top">
                     <div>
                       <div className="mission-name">{mission.name}</div>
@@ -1693,13 +2315,20 @@ function AgentDashboard({ onLogout, token, user }) {
 
   return (
     <div className="dashboard-shell agent-shell">
+      <MissionDetailsModal
+        mission={detailsMission}
+        token={token}
+        canUpload
+        onClose={() => setDetailsMission(null)}
+        onSaved={refreshAgentMissions}
+      />
       <aside className="sidebar agent-sidebar">
         <div className="brand-row">
           <div className="brand-mark">
             <Backpack size={18} strokeWidth={1.8} />
           </div>
           <div>
-            <div className="brand-name">AspiroNet</div>
+            <div className="brand-name">EcoBot</div>
             <div className="brand-sub">Espace agent</div>
           </div>
         </div>
@@ -1719,16 +2348,25 @@ function AgentDashboard({ onLogout, token, user }) {
             >
               <Icon size={16} />
               <span>{label}</span>
-              {key === "missions" && <span className="nav-badge">2</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-foot">
-          <div className="avatar">KT</div>
+          <div className="avatar">
+            {`${user.firstName} ${user.lastName}`
+              .split(" ")
+              .filter(Boolean)
+              .map((part) => part[0].toUpperCase())
+              .join("")}
+          </div>
           <div>
-            <div className="foot-name">Karim T.</div>
-            <div className="foot-role">Agent · Secteur A</div>
+            <div className="foot-name">
+              {user.firstName} {user.lastName}
+            </div>
+            <div className="foot-role">
+              Agent · {user.phone || "Secteur non renseigné"}
+            </div>
           </div>
         </div>
       </aside>
@@ -1773,7 +2411,7 @@ function LoginPage({ onLogin }) {
             <Backpack size={18} strokeWidth={1.8} />
           </div>
           <div>
-            <div className="brand-name">AspiroNet</div>
+            <div className="brand-name">EcoBot</div>
             <div className="brand-sub">Gestion des sacs à dos connectés</div>
           </div>
         </div>

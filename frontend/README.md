@@ -1,5 +1,11 @@
 # React + Vite
 
+## Carte des missions
+
+Le formulaire utilise OpenStreetMap avec Leaflet, sans clé API payante. Cliquez
+sur une position de la carte pour remplir automatiquement la latitude et la
+longitude de la mission.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
